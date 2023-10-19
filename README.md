@@ -1,26 +1,154 @@
-#  Как работать с репозиторием финального задания
+# Учебный проект: разворачивание проекта на сервере - Kittigram
+### Описание:
+**Kittygram** - веб сервис предназначеный для всех, кто любит котиков и  хочет поделиться фотографиями и достижениями своих питомцев с другими пользователями.
 
-## Что нужно сделать
-
-Настроить запуск проекта Kittygram в контейнерах и CI/CD с помощью GitHub Actions
-
-## Как проверить работу с помощью автотестов
-
-В корне репозитория создайте файл tests.yml со следующим содержимым:
-```yaml
-repo_owner: ваш_логин_на_гитхабе
-kittygram_domain: полная ссылка (https://доменное_имя) на ваш проект Kittygram
-taski_domain: полная ссылка (https://доменное_имя) на ваш проект Taski
-dockerhub_username: ваш_логин_на_докерхабе
+### Используемые технологии:
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Django](https://img.shields.io/badge/django-%23092E20.svg?style=for-the-badge&logo=django&logoColor=white)
+![DjangoREST](https://img.shields.io/badge/DJANGO-REST-ff1709?style=for-the-badge&logo=django&logoColor=white&color=ff1709&labelColor=gray)
+![Nginx](https://img.shields.io/badge/nginx-%23009639.svg?style=for-the-badge&logo=nginx&logoColor=white)
+![Gunicorn](https://img.shields.io/badge/gunicorn-%298729.svg?style=for-the-badge&logo=gunicorn&logoColor=white)
+### Запуск проекта на удаленном сервере:
+1. Подключиться к удалённому серверу:
 ```
+$ ssh -i путь_до_файла_с_SSH_ключом/название_файла_с_SSH_ключом_без_расширения login@ip
+```
+2. Кланировать репозиторий:
+```
+$ git clone git@github.com:EvKutyashov/kittigram.git
+```
+3. Создать и активировать виртуальное окружение:
+```
+$ cd kittigram/backend/
+$ python -m venv venv
+$ source venv/bin/activate
+```
+4. Установить зависимости:
+```
+pip install -r requirements.txt
+```
+5. Выполнить миграции:
+ ```
+python manage.py migrate
+```
+6. Устанвоить Gunicorn:
+ ```
+pip install gunicorn==20.1.0
+```
+7. Создать юнит для Gunicorn:
+```
+sudo nano /ect/systemd/system/gunicorn_kittygram.service
+```
+Прописать:
+```
+[Unit]
+Description=<описание юнита>
+After=network.target 
 
-Скопируйте содержимое файла `.github/workflows/main.yml` в файл `kittygram_workflow.yml` в корневой директории проекта.
+[Service]
+User=<Имя пользователя> 
 
-Для локального запуска тестов создайте виртуальное окружение, установите в него зависимости из backend/requirements.txt и запустите в корневой директории проекта `pytest`.
+WorkingDirectory=<Путь к директории проекта>
 
-## Чек-лист для проверки перед отправкой задания
+ExecStart=<директория-с-проектом>/<путь-до-gunicorn-в-виртуальном-окружении> --bind 0.0.0.0:8000 kyttygram_backend.wsgi
 
-- Проект Taski доступен по доменному имени, указанному в `tests.yml`.
-- Проект Kittygram доступен по доменному имени, указанному в `tests.yml`.
-- Пуш в ветку main запускает тестирование и деплой Kittygram, а после успешного деплоя вам приходит сообщение в телеграм.
-- В корне проекта есть файл `kittygram_workflow.yml`.
+[Install]
+WantedBy=multi-user.target
+```
+8. Запустить созданый юнит и добавить процесс Gunicorn в список автозапуска операционной системы на удалённом сервере:
+```
+sudo systemctl start gunicorn_kittygram
+sudo systemctl enable gunicorn   
+```
+9. Установка и запуск Nginx:
+```
+sudo apt install nginx -y
+sudo systemctl start nginx
+```
+10. Настройка и запуск файрвола:
+```
+sudo ufw allow 'Nginx Full'
+sudo ufw allow OpenSSH
+sudo ufw enable
+```
+11. Собрать статику фронтенд-приложения и разместить её в той директории, которую Nginx использует по умолчанию для доступа к статическим файлам:
+    * Перейти в директорию `/infra_sprint1/frontend/` и выполнить команду:
+
+      ```
+      npm run build
+      ```
+    * Скопировать созданую папку в `/var/www/`
+
+      ```
+      sudo cp -r /home/<your_username>r/infra_sprint1/frontend/build/. /var/www/kittygramm/ 
+      ```
+12. Описать конфигурационные настройки Nginx:
+```
+ sudo nano /etc/nginx/sites-enabled/default
+```
+```
+server {
+    server_name ***.***.***.*** https://kittygrampro.sytes.net;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:9000;
+    }
+
+    location /admin/ {
+        proxy_pass http://127.0.0.1:9000;
+    }
+
+    location /media/ {
+        alias /var/www/kittygram/media/;
+    }
+
+    location / {
+        root   /var/www/kittygram;
+        index  index.html index.htm;
+        try_files $uri /index.html;
+    }
+}
+```
+13. Проверить файл конфигурации на ошибки:
+```
+sudo nginx -t 
+```
+14. Перезагрузить Nginx:
+```
+sudo systemctl reload nginx
+```  
+15. Собрать статику бекенда и перенести в директорию с которой работает Nginx:
+```
+python manage.py collectstatic
+```
+```
+sudo cp -r infra_sprint1/backend/static_backend/ /var/www/kittygram/
+```
+16. Создать директорию `media` в директории `/var/www/kittygramm/`для хранения пользовательских картинок
+17. В директории `/infra_sprint1/backend/kittygram/backend/` создать `.env`  и поместить переменные окружения `SECRET_KEY` И `DEBUG` в формате `<КЛЮЧ: значение>`
+    
+18. Получить SSL сертификат:
+    + Установить пакетный менеджер snapd:
+      ```
+      sudo apt install snapd
+      ```
+    + Установить и обновить зависимости для пакетного менеджера snap:
+      ```
+      sudo snap install core; sudo snap refresh core  
+      ```
+    + Установить пакет certbot:
+      ```
+      sudo snap install --classic certbot
+      ```
+    + Создать ссылки на certbot в системной директории:
+      ```
+      sudo ln -s /snap/bin/certbot /usr/bin/certbot
+      ```
+    + Запустить certbot и получить SSL-сертификат:
+      ```
+      sudo certbot --nginx
+      ```
+    + Перезагрузить конфигурацию Nginx:
+      ```
+      sudo systemctl reload nginx
+      ```
